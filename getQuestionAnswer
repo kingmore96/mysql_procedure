@@ -1,0 +1,39 @@
+CREATE DEFINER=`admintf`@`%` PROCEDURE `getQuestionAnswer`(
+in start_time datetime,
+in end_time datetime
+)
+BEGIN
+  declare sum int DEFAULT 0;
+	declare yes int DEFAULT 0;
+	declare no_ int DEFAULT 0;
+	declare yes_p DECIMAL(18,2) DEFAULT 0;
+	declare no_p DECIMAL(18,2) DEFAULT 0;
+	
+	declare i int DEFAULT 16;
+	
+	truncate question_answer;
+	-- sum
+SELECT count(*) FROM `re_deposit_answer` da
+where da.answer like '16%'
+and da.create_time >= start_time
+and da.create_time <= end_time into sum;
+
+-- 17-22以后循环
+while i <= 23 do
+	if i = 16 then 
+		SELECT count(*) FROM `re_deposit_answer` da where da.answer like '16-是%' and da.create_time >= start_time and da.create_time <= end_time into yes;
+	elseif i >=17 and i <= 22 then
+		SELECT count(*) FROM `re_deposit_answer` da where da.answer like concat('%',i,'-是%') and da.create_time >= start_time and da.create_time <= end_time into yes;
+	else
+		SELECT count(*) FROM `re_deposit_answer` da where answer_text like '%23-%' and da.create_time >= start_time and da.create_time <= end_time into yes;
+	end if;
+
+	set no_ = sum - yes;
+	set yes_p = yes/sum * 100;
+	set no_p = no_/sum * 100;
+	
+	insert into question_answer(question,yes,no_,yes_p,no_p,start_time,end_time) values(i,yes,no_,yes_p,no_p,start_time,end_time);
+	set i = i+1;
+end while;
+
+END
