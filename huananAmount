@@ -1,0 +1,138 @@
+CREATE DEFINER=`admintf`@`%` PROCEDURE `huananAmount`()
+BEGIN
+		declare done int default 0;
+DECLARE
+	curr CHAR ( 7 );
+DECLARE
+	nextt CHAR ( 7 );
+DECLARE
+	createt CHAR ( 30 );
+DECLARE
+	endt CHAR ( 30 );
+declare start_name char(255);
+declare end_name char(255);
+
+declare start_name2 char(255);
+declare end_name2 char(255);
+
+declare createt2 char(30);
+declare endt2 char(30);
+
+-- 计数，游标二循环一次就+1，每次结束总外层循环前清0
+declare i int default 0;
+-- 停车时长，原始数据
+declare time decimal(18,1);
+-- 停车时长，用于计算起始日期结束日期的不同停车时长
+declare time_s decimal(18,1);
+declare time_e decimal(18,1);
+-- 最终停车费用
+declare expence decimal(8,2);
+
+-- 停车费用，用于计算起始日期费用和结束日期费用
+declare expence_s decimal(8,2);
+declare expence_e decimal(8,2);
+
+declare expence_m decimal(8,2) default 0;
+	
+-- 声明两个游标
+DECLARE
+	platenumbers1 CURSOR FOR 
+	SELECT
+	车牌号,创建时间,结束时间,出发点,还车点
+FROM
+	huanan_car_order_data;
+	
+DECLARE
+	platenumbers2 CURSOR FOR 
+	SELECT
+	车牌号,创建时间,结束时间,出发点,还车点
+FROM
+	huanan_car_order_data;
+-- where 结束时间 >= '2018-08-01 00:00:00';
+	
+-- 声明循环终止条件
+DECLARE CONTINUE HANDLER FOR SQLSTATE '02000' SET done = 1;
+CREATE TABLE
+IF
+	NOT EXISTS huanan_car_expence ( car_number CHAR ( 7 ), expence DECIMAL(8,2));
+TRUNCATE huanan_car_expence;
+
+-- 开启游标	
+OPEN platenumbers1;
+OPEN platenumbers2;
+
+FETCH platenumbers2 INTO curr,createt,endt,start_name,end_name;
+
+-- 开始循环
+while done <> 1 do
+	FETCH next from platenumbers1 INTO curr,createt,endt,start_name,end_name;
+	FETCH next from platenumbers2 INTO nextt,createt2,endt2,start_name2,end_name2;
+	
+	-- 找到第一个不是华南-华南的订单
+	while ( start_name like '%华南%' and end_name2 like '%华南%' and start_name2 like '%华南%' ) do	
+		FETCH next from platenumbers2 INTO nextt,createt2,endt2,start_name2,end_name2;
+		set i = i +1 ;
+	end while;
+	
+-- 条件判断	
+	if ( start_name like '%华南%' and end_name2 like '%华南%' and start_name2 not like '%华南%' ) THEN
+	-- set time = TIMESTAMPdiff(second,endt2,createt);
+	-- set time = time / 3600 ;
+	-- 如果是当天
+		if( date(createt) = date(endt2) ) then 
+			set time = TIMESTAMPDIFF(second,endt2,createt);
+			set time = cast( time / 3600.0 as decimal(18,2));
+			-- insert into huanan_car_expence(car_number,expence) values(substr(curr,1,4),time);
+			call getParkingExpence(time,expence);
+			insert into huanan_car_expence(car_number,expence) values(curr,expence);
+		-- 如果不是当天
+		else 
+			-- 起始当天的费用
+			set time_s =  TIMESTAMPDIFF(second,concat(date(createt),' 00:00:00'),createt);
+			-- insert into huanan_car_expence(car_number,expence) values(substr(curr,1,4),time_s);
+			set time_s = cast( time_s / 3600.0 as decimal(18,2));
+			-- insert into huanan_car_expence(car_number,expence) values(substr(curr,1,4),time_s);
+			call getParkingExpence(time_s,expence_s);
+			-- insert into huanan_car_expence(car_number,expence) values(substr(curr,1,5),expence_s);
+			-- select @expence_s;
+			-- 结束当天的费用
+			set time_e =  TIMESTAMPDIFF(second,endt2,concat(date(endt2),' 23:59:59'));
+			-- insert into huanan_car_expence(car_number,expence) values(substr(curr,1,4),time_e);
+			set time_e = cast( time_e / 3600.0 as decimal(18,2));
+			-- insert into huanan_car_expence(car_number,expence) values(substr(curr,1,4),time_e);
+			call getParkingExpence(time_e,expence_e);
+			-- insert into huanan_car_expence(car_number,expence) values(substr(curr,1,5),expence_e);
+			-- select @expence_e;
+			-- 中间天数的费用
+			if (day(createt) - day(endt2) > 1) then 
+				set expence_m = (day(createt) - day(endt2) -1)*30;
+				-- select @expence_m;
+			else
+				set expence_m = 0;
+			end if;
+			
+			-- 总费用
+			-- insert into huanan_car_expence(car_number,expence) values(substr(curr,1,5),expence_m);
+			set expence = expence_s+expence_e+expence_m;
+			insert into huanan_car_expence(car_number,expence) values(curr,expence);
+			
+		end if;		
+	end if;
+
+-- 处理游标的位置
+-- 第一个游标移动到第二个游标相同的位置,循环
+	while i <> -1 do
+		FETCH next from platenumbers1 INTO curr,createt,endt,start_name,end_name;
+		set i = i - 1;
+	end while;
+
+-- 第二个游标移动到下一个位置
+	FETCH next from platenumbers2 INTO nextt,createt2,endt2,start_name2,end_name2;
+	-- 清零计数器
+	set i = 0;
+end while;
+CLOSE platenumbers2;
+CLOSE platenumbers1;
+
+
+END
