@@ -1,0 +1,31 @@
+CREATE DEFINER=`admintf`@`%` PROCEDURE `getCarCount_six`(
+in start_time datetime,
+in end_time datetime
+)
+BEGIN
+	declare count int default 0;
+	
+	create table if not exists car_count_six(date_ datetime,count int);
+	
+	truncate car_count_six;
+	
+	start TRANSACTION;
+	
+	while (start_time < end_time ) do
+		
+		if (DATE_FORMAT(start_time,'%H') >= '07' and DATE_FORMAT(start_time,'%H') <= '19' ) then
+		select count(distinct oi.plate_number)
+		from re_order o
+		left join re_order_info oi on o.order_code = oi.order_code
+		where DATE_FORMAT(FROM_UNIXTIME(o.create_time),'%Y-%m-%d %H-%i-%s') >= start_time
+		and DATE_FORMAT(FROM_UNIXTIME(o.create_time),'%Y-%m-%d %H-%i-%s') < date_add(start_time,interval 6 HOUR)
+		and o.order_status <>2 into count ;
+		insert into car_count_six(date_,count) values(start_time,count);
+		end if;
+		
+		set start_time = date_add(start_time,interval 6 hour);
+	end while;
+	
+	commit;
+	
+END
